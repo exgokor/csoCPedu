@@ -1,0 +1,89 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-02-10T05:28:36.913Z",
+  "activeFeatures": [
+    "AutoEduCation"
+  ],
+  "primaryFeature": "AutoEduCation",
+  "features": {
+    "AutoEduCation": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-02-10T04:54:22.991Z",
+        "lastUpdated": "2026-02-10T05:28:36.913Z"
+      },
+      "lastFile": "C:\\Python자동화\\AutoEduCation\\main.py"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-02-10T04:46:04.284Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-02-10T05:28:36.913Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-02-10T04:54:22.991Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T04:55:06.137Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T04:57:06.258Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T04:57:23.529Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T05:07:35.995Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T05:07:43.853Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T05:13:38.242Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T05:23:20.044Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-10T05:28:36.913Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    }
+  ]
+}
