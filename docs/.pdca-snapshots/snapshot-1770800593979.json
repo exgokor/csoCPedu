@@ -1,0 +1,207 @@
+{
+  "timestamp": "2026-02-11T09:03:13.973Z",
+  "reason": "compaction",
+  "status": {
+    "version": "2.0",
+    "lastUpdated": "2026-02-11T09:03:13.380Z",
+    "activeFeatures": [
+      "AutoEduCation"
+    ],
+    "primaryFeature": "AutoEduCation",
+    "features": {
+      "AutoEduCation": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-02-10T04:54:22.991Z",
+          "lastUpdated": "2026-02-11T09:03:13.380Z"
+        },
+        "lastFile": "C:\\Python자동화\\AutoEduCation\\tryTest.py"
+      }
+    },
+    "pipeline": {
+      "currentPhase": 1,
+      "level": "Dynamic",
+      "phaseHistory": []
+    },
+    "session": {
+      "startedAt": "2026-02-10T04:46:04.284Z",
+      "onboardingCompleted": false,
+      "lastActivity": "2026-02-11T09:03:13.380Z"
+    },
+    "history": [
+      {
+        "timestamp": "2026-02-10T04:54:22.991Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T04:55:06.137Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T04:57:06.258Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T04:57:23.529Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T05:07:35.995Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T05:07:43.853Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T05:13:38.242Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T05:23:20.044Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-10T05:28:36.913Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:22:30.705Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:27:37.080Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:31:21.774Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:38:29.298Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:38:43.317Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:39:08.272Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:41:16.429Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:51:27.942Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:55:59.535Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:56:17.278Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:56:28.531Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:56:50.687Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:59:40.970Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:59:46.347Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T08:59:50.805Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T09:01:23.103Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T09:01:35.915Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T09:02:56.366Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-02-11T09:03:13.380Z",
+        "feature": "AutoEduCation",
+        "phase": "do",
+        "action": "updated"
+      }
+    ]
+  }
+}

@@ -4,7 +4,18 @@
       "WebFetch(domain:www.kpbma-cpedu.com)",
       "Bash(pip install:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: KPBMA 보수교육 자동 수강 크롤러\n\nSelenium 기반 자동 로그인, 강의실 차시별 수강 상태 체크,\n영상 자동 재생 및 순차 수강 자동화 구현\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh repo create:*)",
+      "Bash(where:*)",
+      "Bash(winget install:*)",
+      "Bash(cmd /c \"where gh\")",
+      "Bash(dir /s /b \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\")",
+      "Bash(dir /s /b \"C:\\\\Users\\\\bless\\\\AppData\\\\Local\\\\Programs\\\\GitHub CLI\\\\gh.exe\")",
+      "Bash(dir /s /b \"C:\\\\Users\\\\bless\\\\scoop\\\\shims\\\\gh.exe\")",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)"
     ]
   }
 }

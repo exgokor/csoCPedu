@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-02-10T05:28:36.913Z",
+  "lastUpdated": "2026-02-11T09:55:25.069Z",
   "activeFeatures": [
     "AutoEduCation"
   ],
@@ -15,9 +15,9 @@
       "documents": {},
       "timestamps": {
         "started": "2026-02-10T04:54:22.991Z",
-        "lastUpdated": "2026-02-10T05:28:36.913Z"
+        "lastUpdated": "2026-02-11T09:55:25.069Z"
       },
-      "lastFile": "C:\\Python자동화\\AutoEduCation\\main.py"
+      "lastFile": "C:\\Python자동화\\AutoEduCation\\tryTest.py"
     }
   },
   "pipeline": {
@@ -28,7 +28,7 @@
   "session": {
     "startedAt": "2026-02-10T04:46:04.284Z",
     "onboardingCompleted": false,
-    "lastActivity": "2026-02-10T05:28:36.913Z"
+    "lastActivity": "2026-02-11T09:55:25.069Z"
   },
   "history": [
     {
@@ -81,6 +81,240 @@
     },
     {
       "timestamp": "2026-02-10T05:28:36.913Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:22:30.705Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:27:37.080Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:31:21.774Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:38:29.298Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:38:43.317Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:39:08.272Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:41:16.429Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:51:27.942Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:55:59.535Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:56:17.278Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:56:28.531Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:56:50.687Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:59:40.970Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:59:46.347Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T08:59:50.805Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:01:23.103Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:01:35.915Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:02:56.366Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:03:13.380Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:05:16.753Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:07:41.346Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:09:40.709Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:11:25.134Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:11:36.609Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:11:49.294Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:11:54.617Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:12:00.739Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:15:29.097Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:18:04.889Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:18:16.551Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:18:24.962Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:18:30.027Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:18:35.728Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:18:45.324Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:23:27.043Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:23:31.677Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:27:03.591Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:28:51.448Z",
+      "feature": "AutoEduCation",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-02-11T09:55:25.069Z",
       "feature": "AutoEduCation",
       "phase": "do",
       "action": "updated"
