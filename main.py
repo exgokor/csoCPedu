@@ -1,3 +1,4 @@
+import json
 import re
 import time
 import sys
@@ -11,7 +12,10 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 import config
 
-EXTRA_WAIT = 300  # 영상 끝난 후 여유 대기 시간 (5분)
+CONTENTS_LIST_URL = f"{config.BASE_URL}/classRoom/curriContentsListAjax"
+ENROLL_LIST_URL = f"{config.BASE_URL}/sub/myPage/currentEnrollListAjax"
+
+EXTRA_WAIT = 90  # 영상 끝난 후 여유 대기 시간 (1분 30초)
 DEFAULT_DURATION = 4200  # 기본 영상 대기시간 (70분)
 
 
@@ -25,14 +29,19 @@ def create_driver():
     return webdriver.Chrome(service=service, options=options)
 
 
-def login(driver):
-    """자동 로그인"""
+def login(driver, user_id=None, user_pw=None):
+    """자동 로그인 (user_id/user_pw 미지정 시 config에서 읽음)"""
+    if user_id is None:
+        user_id = config.USER_ID
+    if user_pw is None:
+        user_pw = config.USER_PW
+
     print("[1단계] 로그인 페이지 이동...")
     driver.get(config.LOGIN_URL)
     time.sleep(2)
 
-    driver.find_element(By.ID, "userId").send_keys(config.USER_ID)
-    driver.find_element(By.CSS_SELECTOR, ".ip_pw>input").send_keys(config.USER_PW)
+    driver.find_element(By.ID, "userId").send_keys(user_id)
+    driver.find_element(By.CSS_SELECTOR, ".ip_pw>input").send_keys(user_pw)
 
     driver.execute_script("goLogin();")
     time.sleep(3)
@@ -45,97 +54,192 @@ def login(driver):
     return True
 
 
-def get_courses(driver):
-    """마이페이지에서 강의(과정) 목록 조회"""
+def check_session(driver):
+    """세션이 살아있는지 확인. 로그인 페이지로 튕기면 False."""
+    try:
+        current_url = driver.current_url
+        if "goLogin" in current_url or "login" in current_url.lower():
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def ensure_login(driver, user_id=None, user_pw=None):
+    """세션 확인 후 만료됐으면 재로그인. 성공 시 True."""
+    if check_session(driver):
+        return True
+    print("\n  [세션 만료] 재로그인 시도...")
+    return login(driver, user_id, user_pw)
+
+
+def fetch_post(driver, url, params):
+    """Selenium 브라우저 내에서 fetch POST 호출 (세션/쿠키 자동 포함)"""
+    try:
+        result = driver.execute_async_script(
+            "var callback = arguments[arguments.length - 1];"
+            "var params = new URLSearchParams(arguments[0]);"
+            "fetch(arguments[1], {"
+            "  method: 'POST',"
+            "  headers: {"
+            "    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',"
+            "    'X-Requested-With': 'XMLHttpRequest'"
+            "  },"
+            "  body: params.toString()"
+            "})"
+            ".then(r => r.text())"
+            ".then(t => callback(t))"
+            ".catch(e => callback('FETCH_ERROR:' + e.message));",
+            params, url
+        )
+        if result and result.startswith("FETCH_ERROR:"):
+            print(f"    → fetch 오류: {result}")
+            return None
+        return json.loads(result)
+    except json.JSONDecodeError:
+        print(f"    → JSON 파싱 실패! 응답 (앞 300자): {result[:300] if result else 'None'}")
+        return None
+    except Exception as e:
+        print(f"    → fetch 호출 실패: {e}")
+        return None
+
+
+def get_lecture_courses(driver):
+    """currentEnrollListAjax API로 미수료 과정 조회"""
+    data = fetch_post(driver, ENROLL_LIST_URL, {"pageIndex": "1"})
+    if not data:
+        print("  → 수강 목록 API 호출 실패!")
+        return []
+
     courses = []
-    lectures = driver.find_elements(By.CSS_SELECTOR, "#currentCurriList .lecture")
+    for item in data.get("dataList", []):
+        title = item.get("curriNm", "")
+        complete_date = item.get("completeDate", "")
+        curri_cd = item.get("curriCd", "")
+        curri_year = str(item.get("curriYear", ""))
+        curri_term = str(item.get("curriTerm", ""))
+        enroll_no = str(item.get("enrollNo", "1"))
 
-    for lecture in lectures:
-        try:
-            gauge_text = lecture.find_element(By.CSS_SELECTOR, ".lecture_gauge i").text
-            progress = int(gauge_text.replace("%", ""))
-
-            title = lecture.find_element(By.CSS_SELECTOR, "dd h4 a").text.strip()
-
-            enter_btn = lecture.find_element(By.CSS_SELECTOR, ".lectureBtn a.btn.type1")
-            onclick_js = enter_btn.get_attribute("href")
-
-            courses.append({
-                "title": title,
-                "progress": progress,
-                "enter_js": onclick_js,
-            })
-        except Exception:
+        if complete_date:
+            print(f"  [수료완료] {title} (수료일: {complete_date}) → 건너뜀")
             continue
+
+        courses.append({
+            "title": title,
+            "curriCd": curri_cd,
+            "curriYear": curri_year,
+            "curriTerm": curri_term,
+            "enrollNo": enroll_no,
+        })
 
     return courses
 
 
-def parse_minutes(text):
-    """'m분' 형식에서 숫자 추출"""
-    match = re.search(r"(\d+)\s*분", text)
-    if match:
-        return int(match.group(1))
-    return 0
+def get_pending_lectures(driver, course):
+    """curriContentsListAjax API로 미완료 차시 목록 조회
+    조건: contentsType='F', openChk='Y', 강의 미완료 OR 퀴즈 미통과
+    """
+    payload = {
+        "curriCd": course["curriCd"],
+        "curriYear": course["curriYear"],
+        "curriTerm": course["curriTerm"],
+    }
 
+    data = fetch_post(driver, CONTENTS_LIST_URL, payload)
+    if not data:
+        print("    → curriContentsListAjax API 호출 실패!")
+        return [], 0
 
-def get_lecture_items(driver):
-    """강의실 내부에서 각 차시(영상) 목록과 수강 상태 조회"""
-    items = []
+    contents = data.get("dataList", [])
 
-    # edu_info span에서 "들은시간/들을시간" 파싱
-    # 셀렉터 패턴: [id$='_001'] > div > div.edu_info > span 등
-    info_spans = driver.find_elements(By.CSS_SELECTOR, "div.edu_info > span")
+    # 실제 강의(contentsType=F)만 카운트
+    all_lectures = [item for item in contents if item.get("contentsType") == "F"]
+    total_count = len(all_lectures)
 
-    # 학습하기 버튼들
-    study_btns = driver.find_elements(By.CSS_SELECTOR, "a.btn.ver2[href*='goContents']")
+    pending = []
+    completed_list = []
+    locked_list = []
 
-    # 차시 제목들
-    titles = driver.find_elements(By.CSS_SELECTOR, "div.edu_info .edu_title, div.edu_info h4, div.edu_tit")
+    for idx, item in enumerate(all_lectures, 1):
+        contents_nm = item.get("contentsNm", "")
+        open_chk = item.get("openChk", "N")
 
-    for idx, btn in enumerate(study_btns):
-        try:
-            onclick_js = btn.get_attribute("href")
-            if not onclick_js or "goContents" not in onclick_js:
-                continue
-
-            # 해당 차시의 시간 정보 찾기
-            listened = 0
-            total = 0
-            title = f"차시 {idx + 1}"
-
-            # 버튼의 부모 요소에서 시간 정보 찾기
-            try:
-                parent_row = btn.find_element(By.XPATH, "./ancestor::div[contains(@class,'edu_btn')]/parent::div")
-                span_text = parent_row.find_element(By.CSS_SELECTOR, "div.edu_info > span").text
-                # "m분/m분" 패턴 파싱
-                parts = span_text.split("/")
-                if len(parts) == 2:
-                    listened = parse_minutes(parts[0])
-                    total = parse_minutes(parts[1])
-            except Exception:
-                pass
-
-            # 제목 찾기
-            try:
-                parent_row = btn.find_element(By.XPATH, "./ancestor::div[contains(@class,'edu_btn')]/parent::div")
-                title_el = parent_row.find_element(By.CSS_SELECTOR, ".edu_tit, .edu_title, h4")
-                title = title_el.text.strip() or title
-            except Exception:
-                pass
-
-            items.append({
-                "index": idx,
-                "title": title,
-                "listened": listened,
-                "total": total,
-                "is_complete": listened >= total and total > 0,
-                "enter_js": onclick_js.replace("javascript:", ""),
-            })
-        except Exception:
+        if open_chk != "Y":
+            locked_list.append((idx, contents_nm))
             continue
 
-    return items
+        # 강의 완료 판정: curriPercent >= 100 또는 totalTime >= showTime
+        curri_percent = item.get("curriPercent", "")
+        try:
+            percent_val = float(curri_percent) if curri_percent else 0
+        except (ValueError, TypeError):
+            percent_val = 0
+
+        show_time = item.get("showTime", 0) or 0
+        total_time_str = item.get("totalTime", "0") or "0"
+        try:
+            total_time_val = int(total_time_str)
+        except (ValueError, TypeError):
+            total_time_val = 0
+
+        lecture_done = (percent_val >= 100) or (show_time > 0 and total_time_val >= show_time)
+
+        # 퀴즈 통과 판정
+        quiz_yn = item.get("quizYn", "N")
+        quiz_pass = item.get("quizPass", "")
+        quiz_needed = (quiz_yn == "Y" and quiz_pass != "P")
+
+        # 강의 완료 AND 퀴즈 불필요(또는 이미 통과) → 건너뜀
+        if lecture_done and not quiz_needed:
+            completed_list.append((idx, contents_nm))
+            continue
+
+        # goContents() JS 구성
+        js = (f"goContents('{item.get('courseId','')}','{item.get('contentsId','')}',"
+              f"'{item.get('contentsWidth','')}','{item.get('contentsHeight','')}',"
+              f"'{item.get('studyStatus','')}','{item.get('totalTime','')}',"
+              f"'{item.get('showTime','')}','{item.get('curriPercent','')}',"
+              f"'undefined','{item.get('encryptedYn','N')}',"
+              f"'{item.get('mediaContentsKey','')}',"
+              f"'{item.get('sizeApp','N')}')")
+
+        pending.append({
+            "title": contents_nm,
+            "enter_js": js,
+            "showTime": show_time,
+            "totalTime": total_time_val,
+            "curriPercent": percent_val,
+            "lectureDone": lecture_done,
+            # 퀴즈 정보
+            "quizYn": quiz_yn,
+            "quizPass": quiz_pass,
+            "courseId": item.get("courseId", ""),
+            "contentsId": item.get("contentsId", ""),
+        })
+
+    # 차시 상태 요약 출력
+    print(f"  {total_count}개 차시 중 "
+          f"완료 {len(completed_list)}개 / 미완료 {len(pending)}개 / 미오픈 {len(locked_list)}개")
+
+    if completed_list:
+        print(f"    [완료]")
+        for num, name in completed_list:
+            print(f"      {num}차시. {name}")
+    if pending:
+        print(f"    [미완료]")
+        for item in pending:
+            status_parts = []
+            if not item["lectureDone"]:
+                status_parts.append(f"강의 {item['curriPercent']}%")
+            if item["quizYn"] == "Y" and item["quizPass"] != "P":
+                status_parts.append("퀴즈 미통과")
+            print(f"      {item['title']} ({', '.join(status_parts)})")
+    if locked_list:
+        print(f"    [미오픈]")
+        for num, name in locked_list:
+            print(f"      {num}차시. {name}")
+
+    return pending, total_count
 
 
 def click_play_button(driver):
@@ -253,6 +357,27 @@ def wait_and_close(driver, duration_seconds, original_window):
         mins, secs = divmod(remaining, 60)
         print(f"      ⏱ 남은 시간: {mins}분 {secs}초   ", end="\r")
 
+        # alert 감지 (영상 완료 시 뜸)
+        try:
+            alert = driver.switch_to.alert
+            print(f"\n      → Alert 감지: {alert.text}")
+            alert.accept()
+            print("      → Alert 확인 완료! 다음으로 넘어갑니다.")
+            time.sleep(2)
+            # alert 후 창이 남아있으면 닫기
+            try:
+                if driver.current_window_handle != original_window:
+                    driver.close()
+                    driver.switch_to.window(original_window)
+            except Exception:
+                try:
+                    driver.switch_to.window(original_window)
+                except Exception:
+                    pass
+            return
+        except Exception:
+            pass
+
         # 창이 닫혔는지 체크
         try:
             current_windows = driver.window_handles
@@ -278,19 +403,36 @@ def wait_and_close(driver, duration_seconds, original_window):
 
 
 def process_lecture(driver, lecture_item):
-    """단일 차시(영상) 학습 처리"""
+    """단일 차시(영상) 학습 처리. 실패 시 False 반환."""
     original_window = driver.current_window_handle
 
     print(f"      학습하기 클릭...")
     driver.execute_script(lecture_item["enter_js"])
     time.sleep(5)
 
+    # alert 체크 (세션 만료 등으로 오류 alert이 뜰 수 있음)
+    try:
+        alert = driver.switch_to.alert
+        alert_text = alert.text
+        print(f"      → Alert 감지: {alert_text}")
+        alert.accept()
+        time.sleep(1)
+        return False
+    except Exception:
+        pass
+
     # 새 창으로 전환
+    new_window = None
     for handle in driver.window_handles:
         if handle != original_window:
+            new_window = handle
             driver.switch_to.window(handle)
             print("      → 학습 팝업 창으로 전환 완료")
             break
+
+    if not new_window:
+        print("      → 학습 창이 열리지 않았습니다!")
+        return False
 
     # 플레이 버튼 클릭
     click_play_button(driver)
@@ -310,6 +452,164 @@ def process_lecture(driver, lecture_item):
 
     # 대기 + 창 닫기
     wait_and_close(driver, duration, original_window)
+    return True
+
+
+def run_lectures(driver, user_id=None, user_pw=None):
+    """강의+퀴즈 통합 루프 (로그인 완료된 driver 필요)
+    차시별로 강의 수강 → 퀴즈 응시를 순차 처리.
+    모든 차시 완료 시 True 반환.
+    """
+    from tryTest import take_single_quiz, XHR_INTERCEPT_JS
+
+    # 마이페이지 이동 (API 호출을 위해 사이트 도메인에 있어야 함)
+    print("\n[2단계] 마이페이지 이동 중...")
+    driver.get(config.MYPAGE_URL)
+    time.sleep(3)
+
+    # API로 미수료 과정 조회
+    courses = get_lecture_courses(driver)
+
+    if not courses:
+        print("\n모든 과정을 이미 수강 완료했습니다!")
+        return True
+
+    print(f"\n미수료 과정 {len(courses)}개 발견:")
+    for i, c in enumerate(courses, 1):
+        print(f"  {i}. {c['title']}")
+
+    # 각 과정 순차 처리
+    for course_idx, course in enumerate(courses, 1):
+        print(f"\n{'=' * 60}")
+        print(f"[과정 {course_idx}/{len(courses)}] {course['title']}")
+        print(f"{'=' * 60}")
+
+        # goClassRoom JS로 강의실 입장
+        classroom_js = (
+            f"goClassRoom('{course['curriCd']}',"
+            f"'{course['curriYear']}',"
+            f"'{course['curriTerm']}',"
+            f"'{course['enrollNo']}')"
+        )
+
+        print(f"  [3단계] 강의실 입장...")
+        driver.get(config.MYPAGE_URL)
+        time.sleep(3)
+        driver.execute_script(classroom_js)
+        time.sleep(5)
+
+        # API로 미완료 차시 목록 조회 (강의 미완료 OR 퀴즈 미통과)
+        pending, total_count = get_pending_lectures(driver, course)
+
+        if not pending:
+            print("  → 모든 차시 완료! 건너뜁니다.")
+            continue
+
+        # 순차 처리 (강의 → 퀴즈)
+        completed = 0
+        retry_count = 0
+        MAX_RETRY = 3
+        QUIZ_MAX_RETRY = 3
+
+        while pending:
+            current = pending[0]
+            completed += 1
+            print(f"\n    --- [{completed}/{len(pending) + completed - 1}] {current['title']} ---")
+
+            # 세션 체크
+            if not check_session(driver):
+                print("\n  [세션 만료] 재로그인 시도...")
+                if not login(driver, user_id, user_pw):
+                    print("  → 재로그인 실패! 이 과정을 건너뜁니다.")
+                    break
+                driver.get(config.MYPAGE_URL)
+                time.sleep(3)
+                driver.execute_script(classroom_js)
+                time.sleep(5)
+
+            # --- 강의 수강 ---
+            if not current["lectureDone"]:
+                print(f"    [강의] 수강 시작...")
+                success = process_lecture(driver, current)
+
+                if not success:
+                    retry_count += 1
+                    completed -= 1
+                    print(f"  → 차시 처리 실패! (재시도 {retry_count}/{MAX_RETRY})")
+                    if retry_count >= MAX_RETRY:
+                        print("  → 최대 재시도 초과. 이 과정을 건너뜁니다.")
+                        break
+                    if not login(driver, user_id, user_pw):
+                        print("  → 재로그인 실패!")
+                        break
+                    driver.get(config.MYPAGE_URL)
+                    time.sleep(3)
+                    driver.execute_script(classroom_js)
+                    time.sleep(5)
+                    continue
+
+                retry_count = 0
+            else:
+                print(f"    [강의] 이미 완료 → 건너뜀")
+
+            # --- 퀴즈 응시 ---
+            if current["quizYn"] == "Y" and current["quizPass"] != "P":
+                print(f"    [퀴즈] 응시 시작...")
+                # 강의실 페이지로 돌아가서 퀴즈 응시
+                driver.get(config.MYPAGE_URL)
+                time.sleep(3)
+                driver.execute_script(classroom_js)
+                time.sleep(5)
+                driver.execute_script(XHR_INTERCEPT_JS)
+
+                quiz_passed = False
+                for quiz_attempt in range(1, QUIZ_MAX_RETRY + 1):
+                    quiz_ok = take_single_quiz(driver, current["courseId"], current["contentsId"])
+                    if quiz_ok:
+                        print(f"    [퀴즈] 제출 완료!")
+                        quiz_passed = True
+                        break
+                    else:
+                        print(f"    [퀴즈] 실패 (시도 {quiz_attempt}/{QUIZ_MAX_RETRY})")
+                        if quiz_attempt < QUIZ_MAX_RETRY:
+                            time.sleep(3)
+                            driver.execute_script(XHR_INTERCEPT_JS)
+
+                if not quiz_passed:
+                    print(f"    [퀴즈] 최대 재시도 초과. 다음 차시로 넘어갑니다.")
+
+            time.sleep(3)
+
+            # API 재호출로 상태 확인
+            print(f"  → API로 차시 상태 재조회...")
+            driver.get(config.MYPAGE_URL)
+            time.sleep(3)
+            driver.execute_script(classroom_js)
+            time.sleep(5)
+            pending, _ = get_pending_lectures(driver, course)
+
+            if pending:
+                print(f"  → 남은 미완료 차시: {len(pending)}개")
+            else:
+                print(f"  → 모든 차시 완료!")
+
+        print(f"\n  → 과정 '{course['title']}' ({completed}개 차시 처리)")
+
+    # 최종 확인: API로 미수료 과정 재조회
+    driver.get(config.MYPAGE_URL)
+    time.sleep(3)
+    remaining = get_lecture_courses(driver)
+
+    if remaining:
+        print(f"\n[미완료] 아직 {len(remaining)}개 과정 남음:")
+        for c in remaining:
+            print(f"  - {c['title']}")
+        return False
+
+    print(f"\n{'=' * 60}")
+    print("모든 미완료 과정의 모든 차시(강의+퀴즈) 완료!")
+    print(f"{'=' * 60}")
+    return True
 
 
 def main():
@@ -327,129 +627,8 @@ def main():
         if not login(driver):
             return
 
-        # 2. 마이페이지 이동
-        print("\n[2단계] 마이페이지 이동 중...")
-        driver.get(config.MYPAGE_URL)
-        time.sleep(3)
-
-        courses = get_courses(driver)
-        incomplete = [c for c in courses if c["progress"] < 100]
-
-        if not incomplete:
-            print("\n모든 과정을 이미 수강 완료했습니다!")
-            return
-
-        print(f"\n미완료 과정 {len(incomplete)}개 발견:")
-        for i, c in enumerate(incomplete, 1):
-            print(f"  {i}. {c['title']} (진행률: {c['progress']}%)")
-
-        # 3. 각 과정 순차 처리
-        for course_idx, course in enumerate(incomplete, 1):
-            print(f"\n{'=' * 60}")
-            print(f"[과정 {course_idx}/{len(incomplete)}] {course['title']}")
-            print(f"{'=' * 60}")
-
-            # 마이페이지로 돌아가서 강의실 입장
-            driver.get(config.MYPAGE_URL)
-            time.sleep(3)
-
-            # 강의 목록 다시 조회
-            updated_courses = get_courses(driver)
-            target = None
-            for uc in updated_courses:
-                if uc["title"] == course["title"]:
-                    target = uc
-                    break
-
-            if not target:
-                print("  → 과정을 찾을 수 없습니다. 건너뜁니다.")
-                continue
-
-            if target["progress"] >= 100:
-                print("  → 이미 완료된 과정입니다. 건너뜁니다.")
-                continue
-
-            # 강의실 입장
-            print(f"  [3단계] 강의실 입장...")
-            js_code = target["enter_js"].replace("javascript:", "")
-            driver.execute_script(js_code)
-            time.sleep(5)
-
-            # 강의실 내부에서 차시 목록 조회
-            lecture_items = get_lecture_items(driver)
-
-            if not lecture_items:
-                # 차시 목록 파싱 실패 시 단일 학습하기 버튼으로 폴백
-                print("  → 차시 목록 파싱 실패. 학습하기 버튼 직접 처리...")
-                try:
-                    study_btns = driver.find_elements(By.CSS_SELECTOR, "a.btn.ver2[href*='goContents']")
-                    for btn_idx, btn in enumerate(study_btns):
-                        onclick_js = btn.get_attribute("href")
-                        if onclick_js and "goContents" in onclick_js:
-                            print(f"\n    --- 차시 {btn_idx + 1}/{len(study_btns)} ---")
-                            fake_item = {
-                                "title": f"차시 {btn_idx + 1}",
-                                "enter_js": onclick_js.replace("javascript:", ""),
-                            }
-                            process_lecture(driver, fake_item)
-                            # 강의실 페이지로 복귀
-                            driver.get(config.MYPAGE_URL)
-                            time.sleep(3)
-                            js_code = target["enter_js"].replace("javascript:", "")
-                            driver.execute_script(js_code)
-                            time.sleep(5)
-                except Exception as e:
-                    print(f"  → 폴백 처리 오류: {e}")
-                continue
-
-            # 미완료 차시만 필터링
-            incomplete_items = [item for item in lecture_items if not item["is_complete"]]
-
-            print(f"  총 {len(lecture_items)}개 차시 중 미완료 {len(incomplete_items)}개:")
-            for item in lecture_items:
-                status = "✓" if item["is_complete"] else "✗"
-                print(f"    [{status}] {item['title']} ({item['listened']}분/{item['total']}분)")
-
-            if not incomplete_items:
-                print("  → 모든 차시 수강 완료!")
-                continue
-
-            # 미완료 차시 순차 수강
-            for lec_idx, item in enumerate(incomplete_items, 1):
-                print(f"\n    --- [{lec_idx}/{len(incomplete_items)}] {item['title']} ---")
-                print(f"    진행: {item['listened']}분/{item['total']}분")
-
-                # 강의실 페이지로 복귀 (2번째 차시부터)
-                if lec_idx > 1:
-                    driver.get(config.MYPAGE_URL)
-                    time.sleep(3)
-                    js_code = target["enter_js"].replace("javascript:", "")
-                    driver.execute_script(js_code)
-                    time.sleep(5)
-
-                    # 차시 목록 다시 조회해서 최신 상태 확인
-                    refreshed = get_lecture_items(driver)
-                    found = False
-                    for r in refreshed:
-                        if r["index"] == item["index"]:
-                            if r["is_complete"]:
-                                print(f"    → 이미 완료됨. 건너뜁니다.")
-                                found = True
-                                break
-                            item = r
-                            found = True
-                            break
-                    if found and r["is_complete"]:
-                        continue
-
-                process_lecture(driver, item)
-                time.sleep(3)
-
-            print(f"\n  → 과정 '{course['title']}' 모든 차시 수강 완료!")
-
-        print(f"\n{'=' * 60}")
-        print("모든 미완료 과정의 모든 차시 수강 완료!")
-        print(f"{'=' * 60}")
+        # 2. 강의 수강
+        run_lectures(driver, config.USER_ID, config.USER_PW)
 
     except KeyboardInterrupt:
         print("\n\n사용자가 중단했습니다. (Ctrl+C)")

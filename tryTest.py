@@ -497,6 +497,89 @@ def take_single_quiz(driver, course_id, contents_id):
         return False
 
 
+def run_tests(driver):
+    """시험 응시 핵심 로직 (로그인 완료된 driver 필요)
+    모든 미수료 과정의 미응시 퀴즈를 순차 응시.
+    """
+    # 마이페이지 이동
+    print("\n[2단계] 마이페이지 이동 중...")
+    driver.get(config.MYPAGE_URL)
+    time.sleep(3)
+
+    # 시험 대상 과정 조회
+    courses = get_exam_courses(driver)
+
+    if not courses:
+        print("\n시험 응시할 과정이 없습니다! (모두 수료 완료)")
+        return
+
+    print(f"\n시험 대상 과정 {len(courses)}개:")
+    for i, c in enumerate(courses, 1):
+        print(f"  {i}. {c['title']} ({c['curriCd']}, {c['curriYear']}년 {c['curriTerm']}기)")
+
+    # 각 과정별 처리
+    results = []
+    for idx, course in enumerate(courses, 1):
+        print(f"\n{'=' * 60}")
+        print(f"[과정 {idx}/{len(courses)}] {course['title']}")
+        print(f"{'=' * 60}")
+
+        classroom_js = (
+            f"goClassRoom('{course['curriCd']}',"
+            f"'{course['curriYear']}',"
+            f"'{course['curriTerm']}',"
+            f"'{course['enrollNo']}')"
+        )
+        print(f"\n  [3단계] 강의실 입장...")
+        driver.get(config.MYPAGE_URL)
+        time.sleep(3)
+        driver.execute_script(classroom_js)
+        time.sleep(5)
+
+        print(f"\n  [4단계] 컨텐츠 목록 조회 (API)...")
+        pending = get_pending_quizzes(driver, course)
+
+        if not pending:
+            print(f"  → 미응시 퀴즈 없음! 건너뜁니다.")
+            results.append({"title": course["title"], "passed": 0, "total": 0})
+            continue
+
+        passed_cnt = 0
+        for q_idx, quiz in enumerate(pending, 1):
+            print(f"\n  --- 퀴즈 {q_idx}/{len(pending)}: {quiz['contentsNm']} ---")
+
+            success = take_single_quiz(driver, quiz["courseId"], quiz["contentsId"])
+            if success:
+                passed_cnt += 1
+
+            time.sleep(2)
+
+        results.append({
+            "title": course["title"],
+            "passed": passed_cnt,
+            "total": len(pending),
+        })
+
+        print(f"\n  [확인] 퀴즈 상태 재조회...")
+        remaining = get_pending_quizzes(driver, course)
+        if remaining:
+            print(f"  → 아직 미응시 {len(remaining)}개 남음!")
+        else:
+            print(f"  → 모든 퀴즈 Pass 완료!")
+
+        time.sleep(3)
+
+    # 결과 요약
+    print(f"\n{'=' * 60}")
+    print("시험 결과 요약")
+    print(f"{'=' * 60}")
+    for r in results:
+        if r["total"] == 0:
+            print(f"  [이미 Pass] {r['title']}")
+        else:
+            print(f"  [{r['passed']}/{r['total']} 통과] {r['title']}")
+
+
 def main():
     if not config.USER_ID or config.USER_ID == "여기에_아이디_입력":
         print("=" * 50)
@@ -511,87 +594,8 @@ def main():
         if not login(driver):
             return
 
-        # 2. 마이페이지 이동
-        print("\n[2단계] 마이페이지 이동 중...")
-        driver.get(config.MYPAGE_URL)
-        time.sleep(3)
-
-        # 3. 시험 대상 과정 조회 (수료증보기 버튼 없는 것만)
-        courses = get_exam_courses(driver)
-
-        if not courses:
-            print("\n시험 응시할 과정이 없습니다! (모두 수료 완료)")
-            return
-
-        print(f"\n시험 대상 과정 {len(courses)}개:")
-        for i, c in enumerate(courses, 1):
-            print(f"  {i}. {c['title']} ({c['curriCd']}, {c['curriYear']}년 {c['curriTerm']}기)")
-
-        # 4. 각 과정별 처리
-        results = []
-        for idx, course in enumerate(courses, 1):
-            print(f"\n{'=' * 60}")
-            print(f"[과정 {idx}/{len(courses)}] {course['title']}")
-            print(f"{'=' * 60}")
-
-            # 강의실 입장 먼저 (goContentsList는 강의실 세션 필요)
-            classroom_js = (
-                f"goClassRoom('{course['curriCd']}',"
-                f"'{course['curriYear']}',"
-                f"'{course['curriTerm']}',"
-                f"'{course['enrollNo']}')"
-            )
-            print(f"\n  [3단계] 강의실 입장...")
-            driver.get(config.MYPAGE_URL)
-            time.sleep(3)
-            driver.execute_script(classroom_js)
-            time.sleep(5)
-
-            # 강의실 안에서 curriContentsListAjax 호출하여 미응시 퀴즈 조회
-            print(f"\n  [4단계] 컨텐츠 목록 조회 (API)...")
-            pending = get_pending_quizzes(driver, course)
-
-            if not pending:
-                print(f"  → 미응시 퀴즈 없음! 건너뜁니다.")
-                results.append({"title": course["title"], "passed": 0, "total": 0})
-                continue
-
-            # 각 미응시 퀴즈 순차 응시
-            passed_cnt = 0
-            for q_idx, quiz in enumerate(pending, 1):
-                print(f"\n  --- 퀴즈 {q_idx}/{len(pending)}: {quiz['contentsNm']} ---")
-
-                success = take_single_quiz(driver, quiz["courseId"], quiz["contentsId"])
-                if success:
-                    passed_cnt += 1
-
-                time.sleep(2)
-
-            results.append({
-                "title": course["title"],
-                "passed": passed_cnt,
-                "total": len(pending),
-            })
-
-            # 다음 과정 전 상태 재확인
-            print(f"\n  [확인] 퀴즈 상태 재조회...")
-            remaining = get_pending_quizzes(driver, course)
-            if remaining:
-                print(f"  → 아직 미응시 {len(remaining)}개 남음!")
-            else:
-                print(f"  → 모든 퀴즈 Pass 완료!")
-
-            time.sleep(3)
-
-        # 결과 요약
-        print(f"\n{'=' * 60}")
-        print("시험 결과 요약")
-        print(f"{'=' * 60}")
-        for r in results:
-            if r["total"] == 0:
-                print(f"  [이미 Pass] {r['title']}")
-            else:
-                print(f"  [{r['passed']}/{r['total']} 통과] {r['title']}")
+        # 2. 시험 응시
+        run_tests(driver)
 
     except KeyboardInterrupt:
         print("\n\n사용자가 중단했습니다. (Ctrl+C)")
