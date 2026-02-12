@@ -217,6 +217,15 @@ def build_answer_map(quiz_list):
         answer = q.get("answer", "")
         question_text = strip_html(q.get("contents", ""))
 
+        # O/X 문제: 정답이 "O" 또는 "X"이면 보기 번호로 변환 (O→1, X→2)
+        is_ox = False
+        if answer.upper() == "O":
+            answer = "1"
+            is_ox = True
+        elif answer.upper() == "X":
+            answer = "2"
+            is_ox = True
+
         choices = []
         for i in range(1, 6):
             ex = q.get(f"example{i}", "")
@@ -227,6 +236,7 @@ def build_answer_map(quiz_list):
             "answer": answer,
             "question": question_text,
             "choices": choices,
+            "isOX": is_ox,
         }
 
         by_text.append({
@@ -234,6 +244,7 @@ def build_answer_map(quiz_list):
             "answer": answer,
             "question": question_text,
             "choices": choices,
+            "isOX": is_ox,
         })
 
     return by_order, by_text
@@ -247,9 +258,10 @@ def select_answers_on_modal(driver, answer_map_by_order, answer_map_by_text):
     answered = 0
     quiz_cnt = 0
 
-    # 모달에 표시된 문제 수 파악
+    # 모달에 표시된 문제 수 파악 (객관식 answer1_ 또는 OX inlineRadio1_)
     for i in range(1, 30):
-        if driver.find_elements(By.CSS_SELECTOR, f"#answer1_{i}"):
+        if driver.find_elements(By.CSS_SELECTOR, f"#answer1_{i}") or \
+           driver.find_elements(By.CSS_SELECTOR, f"#inlineRadio1_{i}"):
             quiz_cnt = i
         else:
             break
@@ -271,6 +283,8 @@ def select_answers_on_modal(driver, answer_map_by_order, answer_map_by_text):
         print(f"\n    --- 문제 {i}/{quiz_cnt} 처리 중 ---")
         correct_answer = None
         q_preview = ""
+        is_ox = False
+        quiz_order = None
 
         # 방법 1: quizOrder 히든 필드로 매칭
         order_el = driver.find_elements(
@@ -283,7 +297,8 @@ def select_answers_on_modal(driver, answer_map_by_order, answer_map_by_text):
                 if quiz_order in answer_map_by_order:
                     correct_answer = answer_map_by_order[quiz_order]["answer"]
                     q_preview = answer_map_by_order[quiz_order]["question"][:40]
-                    print(f"    [매칭] 정답: {correct_answer}번")
+                    is_ox = answer_map_by_order[quiz_order].get("isOX", False)
+                    print(f"    [매칭] 정답: {correct_answer}번 {'(OX)' if is_ox else ''}")
                 else:
                     print(f"    [매칭] quizOrder {quiz_order}이 answer_map에 없음!")
             except (ValueError, TypeError) as e:
@@ -294,9 +309,9 @@ def select_answers_on_modal(driver, answer_map_by_order, answer_map_by_text):
         # 방법 2: 문제 텍스트 + 보기로 매칭 (폴백)
         if not correct_answer:
             print(f"    [폴백] 텍스트 매칭 시도...")
-            correct_answer = match_by_text(driver, i, answer_map_by_text)
+            correct_answer, is_ox = match_by_text(driver, i, answer_map_by_text)
             if correct_answer:
-                print(f"    [폴백] 텍스트 매칭 성공 → 정답 {correct_answer}번")
+                print(f"    [폴백] 텍스트 매칭 성공 → 정답 {correct_answer}번 {'(OX)' if is_ox else ''}")
             else:
                 print(f"    [폴백] 텍스트 매칭도 실패!")
 
@@ -304,9 +319,12 @@ def select_answers_on_modal(driver, answer_map_by_order, answer_map_by_text):
             print(f"    ✗ 문제 {i}: 정답을 찾지 못함!")
             continue
 
-        # 체크박스 클릭: #answer{정답번호}_{문제번호}
-        checkbox_id = f"answer{correct_answer}_{i}"
-        print(f"    [클릭] #{checkbox_id} 체크박스 찾는 중...")
+        # 체크박스 ID: 객관식 answer{번호}_{문제}, OX inlineRadio{번호}_{문제}
+        if is_ox:
+            checkbox_id = f"inlineRadio{correct_answer}_{i}"
+        else:
+            checkbox_id = f"answer{correct_answer}_{i}"
+        print(f"    [클릭] #{checkbox_id} {'(OX)' if is_ox else '(객관식)'} 찾는 중...")
 
         cb = driver.find_elements(By.CSS_SELECTOR, f"#{checkbox_id}")
         if not cb:
@@ -386,8 +404,8 @@ def match_by_text(driver, question_num, answer_map_by_text):
             best_match = item
 
     if best_match and best_score >= 2:
-        return best_match["answer"]
-    return None
+        return best_match["answer"], best_match.get("isOX", False)
+    return None, False
 
 
 def take_single_quiz(driver, course_id, contents_id):

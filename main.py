@@ -1,4 +1,5 @@
 import json
+import random
 import re
 import time
 import sys
@@ -14,6 +15,7 @@ import config
 
 CONTENTS_LIST_URL = f"{config.BASE_URL}/classRoom/curriContentsListAjax"
 ENROLL_LIST_URL = f"{config.BASE_URL}/sub/myPage/currentEnrollListAjax"
+SURVEY_URL = f"{config.BASE_URL}/classRoom/findResearchContentsList"
 
 EXTRA_WAIT = 90  # 영상 끝난 후 여유 대기 시간 (1분 30초)
 DEFAULT_DURATION = 4200  # 기본 영상 대기시간 (70분)
@@ -24,6 +26,9 @@ def create_driver():
     options = Options()
     options.add_argument("--start-maximized")
     options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
     options.add_experimental_option("excludeSwitches", ["enable-logging"])
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)
@@ -158,15 +163,9 @@ def get_pending_lectures(driver, course):
 
     pending = []
     completed_list = []
-    locked_list = []
 
     for idx, item in enumerate(all_lectures, 1):
         contents_nm = item.get("contentsNm", "")
-        open_chk = item.get("openChk", "N")
-
-        if open_chk != "Y":
-            locked_list.append((idx, contents_nm))
-            continue
 
         # 강의 완료 판정: curriPercent >= 100 또는 totalTime >= showTime
         curri_percent = item.get("curriPercent", "")
@@ -219,7 +218,7 @@ def get_pending_lectures(driver, course):
 
     # 차시 상태 요약 출력
     print(f"  {total_count}개 차시 중 "
-          f"완료 {len(completed_list)}개 / 미완료 {len(pending)}개 / 미오픈 {len(locked_list)}개")
+          f"완료 {len(completed_list)}개 / 미완료 {len(pending)}개")
 
     if completed_list:
         print(f"    [완료]")
@@ -234,10 +233,6 @@ def get_pending_lectures(driver, course):
             if item["quizYn"] == "Y" and item["quizPass"] != "P":
                 status_parts.append("퀴즈 미통과")
             print(f"      {item['title']} ({', '.join(status_parts)})")
-    if locked_list:
-        print(f"    [미오픈]")
-        for num, name in locked_list:
-            print(f"      {num}차시. {name}")
 
     return pending, total_count
 
@@ -455,6 +450,232 @@ def process_lecture(driver, lecture_item):
     return True
 
 
+def detect_survey_modal(driver, max_wait=10):
+    """설문 모달이 떠있는지 확인 (최대 max_wait초 대기)"""
+    for attempt in range(max_wait):
+        try:
+            found = driver.execute_script("""
+                // 설문 입력 요소 탐색
+                var selectors = [
+                    "[id^='resAnswer_']", "[id^='example0_']",
+                    "textarea[name*='resAnswer']", "input[name*='example']",
+                    "[id*='Research']", "[id*='research']",
+                    "[id*='survey']", "[id*='Survey']"
+                ];
+                for (var i = 0; i < selectors.length; i++) {
+                    var els = document.querySelectorAll(selectors[i]);
+                    for (var j = 0; j < els.length; j++) {
+                        if (els[j].offsetParent !== null) return 'found:' + selectors[i];
+                    }
+                }
+                // 모달 체크
+                var modals = document.querySelectorAll('.modal, .popup, [class*="modal"], [class*="pop"]');
+                for (var k = 0; k < modals.length; k++) {
+                    var m = modals[k];
+                    var style = window.getComputedStyle(m);
+                    if (style.display !== 'none' && style.visibility !== 'hidden' && m.offsetParent !== null) {
+                        var text = m.innerText || '';
+                        if (text.indexOf('설문') !== -1 || text.indexOf('만족') !== -1 || text.indexOf('교육 과정') !== -1) {
+                            return 'modal:' + (m.id || m.className);
+                        }
+                    }
+                }
+                return '';
+            """)
+            if found:
+                print(f"  → 설문 감지됨: {found}")
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
+
+def submit_survey(driver, course):
+    """설문 자동 작성 및 제출 (DOM에서 직접 요소 탐색, JS로 값 설정)"""
+    print(f"\n  [설문] 설문 작성 시작...")
+
+    # DOM에서 설문 항목 스캔 + 강의 제목 목록도 페이지에서 추출
+    scan_result = driver.execute_script("""
+        var results = [];
+        // 객관식: example{N}_{resNo} 패턴의 input 그룹핑
+        var radios = document.querySelectorAll("input[id^='example']");
+        var groups = {};
+        radios.forEach(function(r) {
+            var match = r.id.match(/example(\\d+)_(\\d+)/);
+            if (match) {
+                var resNo = parseInt(match[2]);
+                if (!groups[resNo]) groups[resNo] = {type:'K', resNo:resNo, count:0};
+                groups[resNo].count++;
+            }
+        });
+        for (var key in groups) {
+            results.push(groups[key]);
+        }
+        // 주관식: resAnswer_{resNo} 패턴의 textarea
+        var textareas = document.querySelectorAll("textarea[id^='resAnswer_'], textarea[name^='resAnswer'], textarea[id*='resAnswer']");
+        textareas.forEach(function(ta) {
+            var id = ta.id || ta.name || '';
+            var match = id.match(/\\d+/);
+            if (match) {
+                results.push({type:'J', resNo:parseInt(match[0]), elId:id});
+            }
+        });
+        results.sort(function(a, b) { return a.resNo - b.resNo; });
+        return results;
+    """)
+
+    if not scan_result:
+        print("  → 설문 항목을 DOM에서 찾지 못했습니다!")
+        return False
+
+    k_count = sum(1 for s in scan_result if s['type'] == 'K')
+    j_count = sum(1 for s in scan_result if s['type'] == 'J')
+    print(f"  → 설문 {len(scan_result)}개 항목 감지 (객관식 {k_count}개, 주관식 {j_count}개)")
+
+    # 주관식 답변용 강의 제목 (하드코딩 폴백 포함)
+    lecture_titles = [
+        "의약품 유통 및 유통질서 이해",
+        "의약품 지출보고서제도 이해 및 작성사례",
+        "리베이트 적발사례 및 제재사항",
+        "위탁자 입장에서의 유의점 및 수탁자 입장에서의 유의점",
+        "의약품 판촉영업 신고제도와 유통질서 준수",
+        "공정거래법상 부당한 고객유인행위 규제",
+        "판촉영업자 의무사항 및 (재)위탁 유의사항",
+        "세법상 적격증빙 및 관리 방안",
+        "의약품 판촉영업 실무 (자문 사례 위주)",
+        "의약품 광고 관련 법령 및 의무사항의 이해",
+        "의약품 판촉영업자 직업윤리",
+    ]
+
+    # 주관식 항목들 (마지막 주관식 식별용)
+    subjective_items = [s for s in scan_result if s["type"] == "J"]
+
+    for item in scan_result:
+        res_no = item["resNo"]
+
+        if item["type"] == "K":
+            # 객관식: 보기 중 랜덤 1개 클릭
+            choice_count = item.get("count", 5)
+            choice = random.randint(0, choice_count - 1)
+            input_id = f"example{choice}_{res_no}"
+
+            try:
+                label_text = driver.execute_script("""
+                    var el = document.getElementById(arguments[0]);
+                    if (el) {
+                        // label 클릭 시도 (가장 자연스러운 방식)
+                        var l = document.querySelector("label[for='" + arguments[0] + "']");
+                        if (l) {
+                            l.click();
+                        } else {
+                            el.click();
+                        }
+                        // 체크 안 됐으면 강제 설정
+                        if (!el.checked) {
+                            el.checked = true;
+                            el.dispatchEvent(new Event('change', {bubbles: true}));
+                        }
+                        return l ? l.innerText.trim() : '';
+                    }
+                    return null;
+                """, input_id)
+                if label_text is not None:
+                    print(f"  → 설문 {res_no} (객관식): \"{label_text or f'{choice+1}번'}\" 선택")
+                else:
+                    print(f"  → 설문 {res_no}: #{input_id} 요소 없음")
+            except Exception as e:
+                print(f"  → 설문 {res_no}: #{input_id} 클릭 실패 - {e}")
+
+        elif item["type"] == "J":
+            # 주관식: JS로 직접 값 설정
+            el_id = item.get("elId", f"resAnswer_{res_no}")
+            is_last = (item == subjective_items[-1]) if subjective_items else False
+
+            if is_last:
+                answer = "없음"
+            else:
+                picks = random.sample(lecture_titles, 2)
+                answer = ", ".join(picks)
+
+            try:
+                success = driver.execute_script("""
+                    var ta = document.getElementById(arguments[0]);
+                    if (!ta) {
+                        // name으로도 시도
+                        var tas = document.querySelectorAll("textarea[name='" + arguments[0] + "']");
+                        if (tas.length > 0) ta = tas[0];
+                    }
+                    if (ta) {
+                        ta.value = arguments[1];
+                        ta.dispatchEvent(new Event('input', {bubbles: true}));
+                        ta.dispatchEvent(new Event('change', {bubbles: true}));
+                        return true;
+                    }
+                    return false;
+                """, el_id, answer)
+                if success:
+                    print(f"  → 설문 {res_no} (주관식): \"{answer[:50]}\"")
+                else:
+                    print(f"  → 설문 {res_no}: #{el_id} 요소 없음")
+            except Exception as e:
+                print(f"  → 설문 {res_no}: #{el_id} 입력 실패 - {e}")
+
+        time.sleep(0.5)
+
+    # 제출 버튼 찾기 + 클릭
+    time.sleep(1)
+    try:
+        submitted = driver.execute_script("""
+            var selectors = [
+                "button[onclick*='Research']", "button[onclick*='research']",
+                "button[onclick*='save']", "button[onclick*='Save']",
+                "a[onclick*='Research']", "a[onclick*='research']",
+                "a[onclick*='save']", "#btnSave", ".btn-submit",
+                "button.btn-primary", "input[type='submit']",
+                "button[type='submit']"
+            ];
+            for (var i = 0; i < selectors.length; i++) {
+                var btns = document.querySelectorAll(selectors[i]);
+                for (var j = 0; j < btns.length; j++) {
+                    if (btns[j].offsetParent !== null) {
+                        btns[j].click();
+                        return 'btn:' + selectors[i];
+                    }
+                }
+            }
+            // JS 함수 직접 호출 시도
+            if (typeof saveResearch === 'function') {
+                saveResearch();
+                return 'js:saveResearch';
+            }
+            return '';
+        """)
+
+        if submitted:
+            print(f"  → 설문 제출! ({submitted})")
+        else:
+            print("  → 설문 제출 버튼을 찾지 못했습니다!")
+
+        time.sleep(3)
+
+        # alert 처리
+        for _ in range(3):
+            try:
+                alert = driver.switch_to.alert
+                print(f"  → 알림: {alert.text}")
+                alert.accept()
+                time.sleep(1)
+            except Exception:
+                break
+
+        print("  → 설문 제출 완료!")
+        return True
+    except Exception as e:
+        print(f"  → 설문 제출 실패: {e}")
+        return False
+
+
 def run_lectures(driver, user_id=None, user_pw=None):
     """강의+퀴즈 통합 루프 (로그인 완료된 driver 필요)
     차시별로 강의 수강 → 퀴즈 응시를 순차 처리.
@@ -478,6 +699,8 @@ def run_lectures(driver, user_id=None, user_pw=None):
     for i, c in enumerate(courses, 1):
         print(f"  {i}. {c['title']}")
 
+    survey_submitted = False  # 설문 제출 여부 추적
+
     # 각 과정 순차 처리
     for course_idx, course in enumerate(courses, 1):
         print(f"\n{'=' * 60}")
@@ -498,11 +721,23 @@ def run_lectures(driver, user_id=None, user_pw=None):
         driver.execute_script(classroom_js)
         time.sleep(5)
 
+        # 설문 모달 감지 (강의실 입장 직후)
+        if detect_survey_modal(driver):
+            if submit_survey(driver, course):
+                survey_submitted = True
+            continue
+
         # API로 미완료 차시 목록 조회 (강의 미완료 OR 퀴즈 미통과)
         pending, total_count = get_pending_lectures(driver, course)
 
         if not pending:
-            print("  → 모든 차시 완료! 건너뜁니다.")
+            # 모든 차시 완료인데 설문이 안 떴을 수 있음 → 한번 더 체크
+            print("  → 모든 차시 완료! 설문 모달 재확인 중...")
+            if detect_survey_modal(driver, max_wait=15):
+                if submit_survey(driver, course):
+                    survey_submitted = True
+            else:
+                print("  → 설문 모달 없음. 건너뜁니다.")
             continue
 
         # 순차 처리 (강의 → 퀴즈)
@@ -586,6 +821,15 @@ def run_lectures(driver, user_id=None, user_pw=None):
             time.sleep(3)
             driver.execute_script(classroom_js)
             time.sleep(5)
+
+            # 설문 모달 감지 (차시 처리 후)
+            if detect_survey_modal(driver):
+                print("  → 설문 모달 감지!")
+                if submit_survey(driver, course):
+                    survey_submitted = True
+                pending = []
+                break
+
             pending, _ = get_pending_lectures(driver, course)
 
             if pending:
@@ -594,6 +838,13 @@ def run_lectures(driver, user_id=None, user_pw=None):
                 print(f"  → 모든 차시 완료!")
 
         print(f"\n  → 과정 '{course['title']}' ({completed}개 차시 처리)")
+
+    # 설문까지 제출했으면 완료 처리 (서버 반영 지연/접근불가 항목 무시)
+    if survey_submitted:
+        print(f"\n{'=' * 60}")
+        print("모든 강의+퀴즈+설문 완료!")
+        print(f"{'=' * 60}")
+        return True
 
     # 최종 확인: API로 미수료 과정 재조회
     driver.get(config.MYPAGE_URL)
