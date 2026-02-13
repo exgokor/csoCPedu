@@ -8,16 +8,31 @@
   - 엑셀 파일 폴백 지원 (구글시트 미설정 시)
 """
 
+import builtins
 import sys
 import time
 import tkinter as tk
 from tkinter import filedialog
+from datetime import datetime
 
 from openpyxl import load_workbook
 
 import config
 import gsheet
 import telegram_bot
+
+# print에 타임스탬프 자동 추가 (MM/DD HH:MM)
+_original_print = builtins.print
+
+def _timestamped_print(*args, **kwargs):
+    # end="\r" 등 진행률 표시는 타임스탬프 생략
+    if kwargs.get("end") == "\r":
+        return _original_print(*args, **kwargs)
+    ts = datetime.now().strftime("%m/%d %H:%M")
+    return _original_print(f"[{ts}]", *args, **kwargs)
+
+_timestamped_print._timestamped = True
+builtins.print = _timestamped_print
 import certificate
 from main import create_driver, login, run_lectures, get_lecture_courses
 from telegram_bot import RunnerState, TelegramController
@@ -199,10 +214,13 @@ def main():
 
     # 1. 계정 목록 가져오기 (구글시트 우선, 없으면 엑셀 폴백)
     accounts = []
+    use_gsheet = False
 
     if config.GSHEET_WEB_APP_URL:
         print("\n[구글시트] 대기 계정 조회 중...")
         accounts = gsheet.fetch_pending_accounts()
+        if accounts:
+            use_gsheet = True
 
     if not accounts:
         if config.GSHEET_WEB_APP_URL:
@@ -237,24 +255,51 @@ def main():
     # 전체 시작 알림
     telegram_bot.send_message(f"자동 수강 시작: {len(accounts)}개 계정")
 
-    # 3. 계정별 순차 실행
+    # 3. 계정별 순차 실행 (구글시트 모드: 재조회 루프)
+    total_processed = 0
     try:
-        for idx, acc in enumerate(accounts, 1):
-            user_id = acc["user_id"]
-            user_pw = acc["user_pw"]
-            chat_id = acc.get("telegram_chat_id") or None
+        while True:
+            for idx, acc in enumerate(accounts, 1):
+                user_id = acc["user_id"]
+                user_pw = acc["user_pw"]
+                chat_id = acc.get("telegram_chat_id") or None
 
-            print(f"\n{'#' * 60}")
-            print(f"  계정 {idx}/{len(accounts)}: {user_id}")
-            print(f"{'#' * 60}")
+                print(f"\n{'#' * 60}")
+                print(f"  계정 {idx}/{len(accounts)}: {user_id}")
+                print(f"{'#' * 60}")
 
-            state.set_current(user_id)
-            run_for_account(user_id, user_pw, state, chat_id=chat_id)
+                state.set_current(user_id)
+                run_for_account(user_id, user_pw, state, chat_id=chat_id)
 
-            print(f"\n  → [{user_id}] 처리 완료!")
-            if idx < len(accounts):
-                print("  → 5초 후 다음 계정으로 넘어갑니다...")
-                time.sleep(5)
+                print(f"\n  → [{user_id}] 처리 완료!")
+                if idx < len(accounts):
+                    print("  → 5초 후 다음 계정으로 넘어갑니다...")
+                    time.sleep(5)
+
+            total_processed += len(accounts)
+
+            # 구글시트 모드가 아니면 1회 처리 후 종료
+            if not use_gsheet:
+                break
+
+            # 구글시트 재조회
+            print(f"\n{'=' * 60}")
+            print("  [구글시트] 추가 계정 조회 중...")
+            print(f"{'=' * 60}")
+            accounts = gsheet.fetch_pending_accounts()
+
+            if not accounts:
+                print("  [구글시트] 새로운 대기 계정 없음. 종료합니다.")
+                break
+
+            print(f"  [구글시트] 새로운 대기 계정 {len(accounts)}개 발견!")
+            for i, acc in enumerate(accounts, 1):
+                masked_pw = acc["user_pw"][:2] + "*" * (len(acc["user_pw"]) - 2)
+                chat_info = f" (chat: {acc['telegram_chat_id']})" if acc.get("telegram_chat_id") else ""
+                print(f"    {i}. {acc['user_id']} / {masked_pw}{chat_info}")
+
+            state.total_accounts += len(accounts)
+            telegram_bot.send_message(f"추가 계정 {len(accounts)}개 발견, 처리 시작")
 
     except KeyboardInterrupt:
         print("\n\n사용자가 중단했습니다. (Ctrl+C)")
@@ -267,7 +312,7 @@ def main():
         completed = state.completed_accounts
         failed = list(state.failed_accounts)
 
-    summary = f"전체 처리 완료: {completed}/{len(accounts)}개"
+    summary = f"전체 처리 완료: {completed}/{state.total_accounts}개"
     if failed:
         summary += f"\n실패: {', '.join(failed)}"
     telegram_bot.send_message(summary)

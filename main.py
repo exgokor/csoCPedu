@@ -1,8 +1,10 @@
+import builtins
 import json
 import random
 import re
 import time
 import sys
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -12,6 +14,19 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
 import config
+
+# print에 타임스탬프 자동 추가 (MM/DD HH:MM) - runner.py에서 이미 설정된 경우 스킵
+if not hasattr(builtins.print, '_timestamped'):
+    _original_print = builtins.print
+
+    def _timestamped_print(*args, **kwargs):
+        if kwargs.get("end") == "\r":
+            return _original_print(*args, **kwargs)
+        ts = datetime.now().strftime("%m/%d %H:%M")
+        return _original_print(f"[{ts}]", *args, **kwargs)
+
+    _timestamped_print._timestamped = True
+    builtins.print = _timestamped_print
 
 CONTENTS_LIST_URL = f"{config.BASE_URL}/classRoom/curriContentsListAjax"
 ENROLL_LIST_URL = f"{config.BASE_URL}/sub/myPage/currentEnrollListAjax"
@@ -745,9 +760,21 @@ def run_lectures(driver, user_id=None, user_pw=None):
         retry_count = 0
         MAX_RETRY = 3
         QUIZ_MAX_RETRY = 3
+        processed_contents = {}  # contentsId → 처리 횟수 (반복 방지)
+        MAX_SAME_RETRY = 1  # 같은 차시 최대 재처리 횟수
 
         while pending:
             current = pending[0]
+            cid = current["contentsId"]
+
+            # 같은 차시가 다시 pending에 나오면 재처리 제한
+            if processed_contents.get(cid, 0) > MAX_SAME_RETRY:
+                print(f"\n    --- {current['title']} ---")
+                print(f"    → 이미 {processed_contents[cid]}회 처리했으나 서버 미반영. 건너뜁니다.")
+                pending.pop(0)
+                continue
+
+            processed_contents[cid] = processed_contents.get(cid, 0) + 1
             completed += 1
             print(f"\n    --- [{completed}/{len(pending) + completed - 1}] {current['title']} ---")
 

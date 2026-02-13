@@ -18,7 +18,7 @@ def _enabled():
 
 
 def send_message(text, chat_id=None):
-    """텍스트 메시지 전송"""
+    """텍스트 메시지 전송 (HTML 파싱 실패 시 plain text 재시도)"""
     if not _enabled():
         return None
     chat_id = chat_id or config.TELEGRAM_CHAT_ID
@@ -27,6 +27,14 @@ def send_message(text, chat_id=None):
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "HTML",
+        }, timeout=10)
+        result = resp.json()
+        if result.get("ok"):
+            return result
+        # HTML 파싱 실패 시 plain text로 재시도
+        resp = requests.post(f"{API_BASE}/sendMessage", json={
+            "chat_id": chat_id,
+            "text": text,
         }, timeout=10)
         return resp.json()
     except Exception as e:
@@ -64,13 +72,32 @@ def send_document(file_bytes, filename, caption="", chat_id=None):
         return None
 
 
-def _take_pc_screenshot():
-    """전체 PC 화면 스크린샷 → PNG bytes"""
-    from PIL import ImageGrab
-    img = ImageGrab.grab()
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
+def _take_pc_screenshot(timeout=10):
+    """전체 PC 화면 스크린샷 → PNG bytes (타임아웃 포함)"""
+    result = [None]
+    error = [None]
+
+    def _capture():
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab()
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            result[0] = buf.getvalue()
+        except Exception as e:
+            error[0] = e
+
+    t = threading.Thread(target=_capture)
+    t.start()
+    t.join(timeout)
+
+    if t.is_alive():
+        raise TimeoutError(f"스크린샷 캡처 {timeout}초 타임아웃")
+    if error[0]:
+        raise error[0]
+    if not result[0]:
+        raise RuntimeError("스크린샷 캡처 결과 없음")
+    return result[0]
 
 
 # ── 원격 제어 (long polling) ──
@@ -159,8 +186,10 @@ class TelegramController:
         # 전체 PC 화면 스크린샷 전송
         try:
             screenshot = _take_pc_screenshot()
-            send_photo(screenshot, caption=msg, chat_id=chat_id)
-            return
+            result = send_photo(screenshot, caption=msg, chat_id=chat_id)
+            if result and result.get("ok"):
+                return
+            print(f"  [텔레그램] 스크린샷 전송 실패, 텍스트로 폴백")
         except Exception as e:
             print(f"  [텔레그램] PC 스크린샷 실패: {e}")
 
